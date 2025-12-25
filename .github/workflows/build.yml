@@ -27,8 +27,8 @@ jobs:
           sudo apt update
           # make: 构建工具
           # imagemagick: 图像处理工具，用于生成启动画面
-          # ttf-dejavu: DejaVu字体，用于启动画面文字渲染
-          sudo apt install -y make imagemagick ttf-dejavu
+          # fonts-noto: Noto字体，用于启动画面文字渲染
+          sudo apt install -y make imagemagick fonts-noto
 
       # 步骤3：下载ARM交叉编译工具链
       - name: Download ARM toolchain
@@ -72,7 +72,7 @@ jobs:
           convert \
             -size 640x360 \
             -background black \
-            -gravity center -font "DejaVu-Sans" -pointsize 64 -fill white label:"Power by deconf" \
+            -gravity center -font "Noto-Sans" -pointsize 64 -fill white label:"Power by deconf" \
             BMP3:resource/bootup.bmp
 
           # 创建资源列表文件
