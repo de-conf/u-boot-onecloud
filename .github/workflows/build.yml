@@ -34,7 +34,7 @@ jobs:
       - name: Download ARM toolchain
         run: |
           # 下载Linaro GCC工具链（用于编译ARM架构的U-Boot）
-          curl -L -O https://redirect.armbian.com/_toolchain/gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz
+          curl -L -O https://mirror.iscas.ac.cn/armbian-releases/_toolchain/gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz
           # 解压工具链
           tar xvf ./gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz
 
@@ -162,7 +162,7 @@ jobs:
       # 步骤9：创建GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/onecloud'
         with:
           tag_name: build-${{ github.run_number }}
           name: U-Boot Build ${{ github.run_number }}
