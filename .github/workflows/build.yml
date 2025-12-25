@@ -1,68 +1,105 @@
-name: Build
+# ============================================
+# U-Boot构建流程
+# 用于编译Onecloud设备的U-Boot引导程序
+# ============================================
+name: Build U-Boot
 
 on:
-  push:
-  workflow_dispatch:
+  push:              # 代码推送时触发
+  workflow_dispatch: # 支持手动触发
 
+# GitHub Actions权限配置
+permissions:
+  contents: write    # 需要写权限以创建release和上传文件
 
 jobs:
   build:
+    name: Build U-Boot for Onecloud
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
+      # 步骤1：检出代码仓库
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install dependencies
+      # 步骤2：安装构建依赖
+      - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install make imagemagick ttf-dejavu
+          # make: 构建工具
+          # imagemagick: 图像处理工具，用于生成启动画面
+          # ttf-dejavu: DejaVu字体，用于启动画面文字渲染
+          sudo apt install -y make imagemagick ttf-dejavu
 
-      - name: Download toolchain
+      # 步骤3：下载ARM交叉编译工具链
+      - name: Download ARM toolchain
         run: |
+          # 下载Linaro GCC工具链（用于编译ARM架构的U-Boot）
           curl -L -O https://redirect.armbian.com/_toolchain/gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz
+          # 解压工具链
           tar xvf ./gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz
 
-      - name: Build
+      # 步骤4：编译U-Boot
+      - name: Build U-Boot
         run: |
+          # 将交叉编译工具链添加到PATH环境变量
           export PATH="$PATH:$(pwd)/gcc-linaro-arm-none-eabi-4.8-2014.04_linux/bin"
 
+          # 清理之前的编译输出
           make distclean
+          # 加载Onecloud（M8B）设备的配置
           make m8b_onecloud_config
+          # 使用多核并行编译（-j参数使用CPU核心数）
           make -j$(nproc)
 
-      - name: Download AmlImg
+      # 步骤5：下载Amlogic镜像打包工具
+      - name: Download AmlImg tool
         run: |
-          ver="v0.3.0"
+          # AmlImg版本
+          ver="v0.3.1"
+          # 下载AmlImg工具（用于打包Amlogic烧录镜像）
           curl -L -o ./AmlImg https://github.com/hzyitc/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
+          # 添加执行权限
           chmod +x ./AmlImg
 
-      - name: Generate resource
+      # 步骤6：生成资源镜像（启动画面）
+      - name: Generate resource image
         run: |
+          # 创建资源目录
           mkdir -p resource
 
+          # 使用ImageMagick生成启动画面图片
+          # 640x360分辨率，黑色背景，白色"Power by deconf"文字
           convert \
             -size 640x360 \
             -background black \
-            -gravity center -font "DejaVu-Sans" -pointsize 64 -fill white label:"U-Boot" \
+            -gravity center -font "DejaVu-Sans" -pointsize 64 -fill white label:"Power by deconf" \
             BMP3:resource/bootup.bmp
 
+          # 创建资源列表文件
           cat <<EOF >resource/list.txt
           090000:bootup:bootup.bmp
           EOF
+          
+          # 使用AmlImg打包资源镜像
           ./AmlImg res_pack build/resource.img resource/
 
+      # 步骤7：生成eMMC烧录镜像
       - name: Generate eMMC burn image
         run: |
+          # 创建打包目录
           mkdir -p pack
 
+          # 复制DDR初始化文件
           cp build/ddr_init.bin pack/DDR.USB
+          # 复制U-Boot压缩文件
           cp build/u-boot-comp.bin pack/UBOOT_COMP.USB
 
+          # 生成SD卡烧录配置文件
           cat <<EOF >pack/aml_sdc_burn.ini
           [common]
-          erase_bootloader    = 1
-          erase_flash         = 0
-          reboot              = 0
+          erase_bootloader    = 1    # 擦除原bootloader
+          erase_flash         = 0    # 不擦除整个flash
+          reboot              = 0    # 烧录后不自动重启
 
           ;package will filled by sdacard burning tool
           [burn_ex]
@@ -70,21 +107,25 @@ jobs:
           ;media       =
           EOF
 
+          # 生成平台配置文件（Amlogic S805芯片参数）
           cat <<EOF >pack/platform.conf
-          Platform:0x0801
-          BinPara:0xd9010000
-          DDRLoad:0xd9000000
-          DDRRun:0xd9000030
-          Uboot_down:0x200000
-          Uboot_decomp:0xd9000030
+          Platform:0x0801              # 平台ID：S805
+          BinPara:0xd9010000          # 二进制参数地址
+          DDRLoad:0xd9000000          # DDR加载地址
+          DDRRun:0xd9000030           # DDR运行地址
+          Uboot_down:0x200000         # U-Boot下载地址
+          Uboot_decomp:0xd9000030     # U-Boot解压地址
           EOF
 
+          # 复制bootloader镜像并生成校验文件
           cp build/u-boot.bin pack/bootloader.img
           echo -n "sha1sum $(sha1sum pack/bootloader.img | awk '{print $1}')" >pack/bootloader.VERIFY
 
+          # 复制资源镜像并生成校验文件
           cp build/resource.img pack/resource.img
           echo -n "sha1sum $(sha1sum pack/resource.img | awk '{print $1}')" >pack/resource.VERIFY
 
+          # 生成烧录命令文件
           cat <<EOF >pack/commands.txt
           USB:DDR:normal:DDR.USB
           USB:UBOOT_COMP:normal:UBOOT_COMP.USB
@@ -98,31 +139,47 @@ jobs:
           PARTITION:resource:normal:resource.img
           VERIFY:resource:normal:resource.VERIFY
 
+          # 以下分区由Armbian构建流程添加
           # PARTITION:boot:normal:boot.img
           # VERIFY:boot:normal:boot.VERIFY
           # PARTITION:rootfs:normal:rootfs.img
           # VERIFY:rootfs:normal:rootfs.VERIFY
           EOF
 
+          # 使用AmlImg打包最终的烧录镜像
           ./AmlImg pack build/eMMC.burn.img pack/
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+      # 步骤8：上传构建产物
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
+          name: u-boot-onecloud
           path: |
             build/*.bin
             build/resource.img
             build/eMMC.burn.img
 
-      - name: Release
-        run: |
-          time="${{ github.event.head_commit.timestamp }}"
-          sha="${GITHUB_SHA:0:8}"
-          tag="build-$(date +'%Y%m%d-%H%M' -d "$time")"
-          message="Auto-Build $(date +'%Y-%m-%d %H:%M' -d "$time")"
-          hub release create  -t "$GITHUB_SHA" "$tag" -m "$message" \
-            $(for a in build/*.bin; do echo -a $a; done) \
-            -a build/resource.img \
-            -a build/eMMC.burn.img
+      # 步骤9：创建GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: U-Boot Build ${{ github.run_number }}
+          body: |
+            ## 自动构建 U-Boot
+            
+            **构建时间**: ${{ github.event.head_commit.timestamp }}
+            **提交SHA**: ${{ github.sha }}
+            **提交信息**: ${{ github.event.head_commit.message }}
+            
+            ### 文件说明
+            - `*.bin`: U-Boot二进制文件
+            - `resource.img`: 启动画面资源文件
+            - `eMMC.burn.img`: 完整的eMMC烧录镜像
+          files: |
+            build/*.bin
+            build/resource.img
+            build/eMMC.burn.img
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
