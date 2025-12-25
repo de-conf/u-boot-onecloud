@@ -34,15 +34,15 @@ jobs:
       - name: Download ARM toolchain
         run: |
           # 下载Linaro GCC工具链（用于编译ARM架构的U-Boot）
-          curl -L -O https://mirror.iscas.ac.cn/armbian-releases/_toolchain/gcc-arm-11.2-2022.02-x86_64-arm-none-eabi.tar.xz
+          curl -L -O https://releases.linaro.org/components/toolchain/binaries/4.9-2016.02/arm-eabi/gcc-linaro-4.9-2016.02-x86_64_arm-eabi.tar.xz
           # 解压工具链
-          tar xvf ./gcc-arm-11.2-2022.02-x86_64-arm-none-eabi.tar.xz
+          tar xvf ./gcc-linaro-4.9-2016.02-x86_64_arm-eabi.tar.xz
 
       # 步骤4：编译U-Boot
       - name: Build U-Boot
         run: |
           # 将交叉编译工具链添加到PATH环境变量
-          export PATH="$PATH:$(pwd)/gcc-arm-11.2-2022.02-x86_64-arm-none-eabi/bin"
+          export PATH="$PATH:$(pwd)/gcc-linaro-4.9-2016.02-x86_64_arm-eabi/bin"
 
           # 清理之前的编译输出
           make distclean
